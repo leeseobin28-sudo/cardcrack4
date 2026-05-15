@@ -3,14 +3,16 @@
 # Python 3.14 환경에서도 작동 (streamlit-webrtc 사용 안 함)
 # 카드 자동 검출 + 원스텝 분석
 
+import os
+import threading
+
 import streamlit as st
-import streamlit.components.v1 as components
 import numpy as np
 import cv2
 from PIL import Image
 from ultralytics import YOLO
-import base64
-import io
+import av  # <--- 이 녀석이 빠져서 지금 에러가 났습니다!
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # 이 부분이 수정되어야 합니다!
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration 
