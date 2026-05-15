@@ -1,19 +1,16 @@
 # cardcrack.py
-# 콘크리트 균열 자동 진단 V9.0 - 거리 지정형 방식
-# 거리를 선택하면 가이드박스 크기가 변함
-# 가이드박스에 카드를 맞춰 거리를 확보한 뒤, 카드를 치우고 균열만 촬영
+# 콘크리트 균열 자동 진단 V9.0 - Streamlit Cloud 안정 버전
+# Python 3.14 환경에서도 작동 (streamlit-webrtc 사용 안 함)
+# 카드 자동 검출 + 원스텝 분석
 
-import os
-import cv2
-
-# 만약 위 수정 후에도 에러가 나면 이 코드를 추가해 보세요
-# os.environ["LD_PRELOAD"] = ""
 import streamlit as st
+import streamlit.components.v1 as components
 import numpy as np
 import cv2
 from PIL import Image
 from ultralytics import YOLO
-import av
+import base64
+import io
 
 # 이 부분이 수정되어야 합니다!
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration 
