@@ -4,8 +4,10 @@
 # 가이드박스에 카드를 맞춰 거리를 확보한 뒤, 카드를 치우고 균열만 촬영
 
 import os
-os.system("pip uninstall -y opencv-python")
+import cv2
 
+# 만약 위 수정 후에도 에러가 나면 이 코드를 추가해 보세요
+# os.environ["LD_PRELOAD"] = ""
 import streamlit as st
 import numpy as np
 import cv2
