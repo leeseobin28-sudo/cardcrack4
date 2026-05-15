@@ -1,23 +1,30 @@
 # cardcrack.py
-# 콘크리트 균열 자동 진단 V9.3 (안정판 - WebRTC 제거)
+# 콘크리트 균열 자동 진단 V9.4
+# - 등급 산출 제거
+# - 라이브 카메라 위에 가이드 박스 오버레이 (HTML/JS 커스텀)
+# - 가이드 비율과 실제 캡처 비율 일치
 
 import streamlit as st
+import streamlit.components.v1 as components
 import numpy as np
 import cv2
+import base64
+from io import BytesIO
 from PIL import Image
 from ultralytics import YOLO
 
-st.set_page_config(page_title="균열 자동 진단 V9.3", layout="wide")
-st.title("🔍 콘크리트 균열 자동 진단 V9.3")
-st.caption("📏 거리 선택 → 가이드 미리보기로 거리 고정 → 카드 제거 후 촬영")
+st.set_page_config(page_title="균열 자동 진단 V9.4", layout="wide")
+st.title("🔍 콘크리트 균열 자동 진단 V9.4")
+st.caption("📏 라이브 카메라 가이드로 거리 고정 → 카드 제거 → 촬영 → 자동 분석")
 
 # ════════════════════════════════════════════════════════════════
 # 상수
 # ════════════════════════════════════════════════════════════════
 CARD_W_MM = 85.60
 CARD_H_MM = 53.98
-CARD_ASPECT = CARD_W_MM / CARD_H_MM
+CARD_ASPECT = CARD_W_MM / CARD_H_MM  # ≈ 1.586
 
+# 거리(m) → 카드가 화면 너비에서 차지하는 비율
 DISTANCE_RATIO_MAP = {
     0.2: 0.80,
     0.4: 0.40,
@@ -30,54 +37,6 @@ DISTANCE_RATIO_MAP = {
 @st.cache_resource
 def load_yolo():
     return YOLO("bestcrack.pt")
-
-# ════════════════════════════════════════════════════════════════
-# 가이드박스 그리기
-# ════════════════════════════════════════════════════════════════
-def draw_guide_box(frame, guide_ratio):
-    H, W = frame.shape[:2]
-    cx, cy = W // 2, H // 2
-    box_w = int(W * guide_ratio)
-    box_h = int(box_w / CARD_ASPECT)
-    x1, y1 = cx - box_w // 2, cy - box_h // 2
-    x2, y2 = cx + box_w // 2, cy + box_h // 2
-
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (W, H), (0, 0, 0), -1)
-    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 0), -1)
-    frame = cv2.addWeighted(overlay, 0.35, frame, 0.65, 0)
-
-    color = (102, 255, 102)
-    dash_len = max(5, int(box_w * 0.05))
-    gap = max(5, int(box_w * 0.03))
-    for i in range(x1, x2, dash_len + gap):
-        cv2.line(frame, (i, y1), (min(i + dash_len, x2), y1), color, 3)
-        cv2.line(frame, (i, y2), (min(i + dash_len, x2), y2), color, 3)
-    for i in range(y1, y2, dash_len + gap):
-        cv2.line(frame, (x1, i), (x1, min(i + dash_len, y2)), color, 3)
-        cv2.line(frame, (x2, i), (x2, min(i + dash_len, y2)), color, 3)
-
-    corner_len, corner_thick = 25, 6
-    cv2.line(frame, (x1, y1), (x1 + corner_len, y1), color, corner_thick)
-    cv2.line(frame, (x1, y1), (x1, y1 + corner_len), color, corner_thick)
-    cv2.line(frame, (x2, y1), (x2 - corner_len, y1), color, corner_thick)
-    cv2.line(frame, (x2, y1), (x2, y1 + corner_len), color, corner_thick)
-    cv2.line(frame, (x1, y2), (x1 + corner_len, y2), color, corner_thick)
-    cv2.line(frame, (x1, y2), (x1, y2 - corner_len), color, corner_thick)
-    cv2.line(frame, (x2, y2), (x2 - corner_len, y2), color, corner_thick)
-    cv2.line(frame, (x2, y2), (x2, y2 - corner_len), color, corner_thick)
-
-    cv2.line(frame, (cx - 15, cy), (cx + 15, cy), (255, 200, 0), 3)
-    cv2.line(frame, (cx, cy - 15), (cx, cy + 15), (255, 200, 0), 3)
-
-    text = "Fit card here, then REMOVE card"
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    (tw, th), _ = cv2.getTextSize(text, font, 0.6, 2)
-    text_y = max(y1 - 15, th + 10)
-    cv2.rectangle(frame, (cx - tw // 2 - 8, text_y - th - 8),
-                  (cx + tw // 2 + 8, text_y + 8), color, -1)
-    cv2.putText(frame, text, (cx - tw // 2, text_y), font, 0.6, (0, 0, 0), 2)
-    return frame
 
 # ════════════════════════════════════════════════════════════════
 # 사이드바
@@ -94,92 +53,233 @@ conf_thres = st.sidebar.slider("YOLO 신뢰도", 0.05, 0.9, 0.25, 0.05)
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"""
 **📋 사용법**
-1. 거리 선택 (현재: **{selected_distance}m**)
-2. 아래 미리보기처럼 **카드가 화면에서 같은 비율**이 되도록 거리 맞추기
-3. 폰을 그 자리에 **고정**
-4. **카드 치우기**
-5. 촬영 → 자동 분석
+1. 거리 선택 (현재 **{selected_distance}m**)
+2. 아래 **라이브 카메라**에 카드를 비춤
+3. 카드가 **녹색 점선 박스에 딱 맞도록** 거리 조절
+4. **휴대폰 위치 고정** 후 카드 제거
+5. **📸 촬영** 버튼 클릭 → 자동 분석
 """)
 
 # 세션 상태
-if "captured_img" not in st.session_state:
-    st.session_state.captured_img = None
+if "captured_b64" not in st.session_state:
+    st.session_state.captured_b64 = None
 
 # ════════════════════════════════════════════════════════════════
-# 가이드 미리보기 (정적)
+# 라이브 카메라 + 가이드 오버레이 (HTML/JS 커스텀)
 # ════════════════════════════════════════════════════════════════
-st.markdown("### 🎯 1단계: 거리 가이드 미리보기")
-preview_w, preview_h = 800, 600
-preview = np.full((preview_h, preview_w, 3), 180, dtype=np.uint8)
-preview = draw_guide_box(preview, current_guide_ratio)
-cv2.putText(preview, f"Distance: {selected_distance}m | Card box ratio: {current_guide_ratio*100:.1f}%",
-            (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 200), 2)
-st.image(preview, caption=f"🔍 {selected_distance}m 기준 - 카드가 이 박스 크기로 보이게 거리 조절",
-         use_container_width=True)
+st.markdown("### 🎥 1단계: 라이브 카메라 + 거리 가이드")
 
-st.warning("""
-💡 **거리 맞추는 법**
-1. 카드를 균열 옆에 댑니다
-2. 휴대폰 화면 속 카드가 위 미리보기 박스와 **같은 비율**이 될 때까지 앞뒤로 이동
-3. **그 자리에서 휴대폰 고정**
-4. 카드를 치우고 아래 카메라로 촬영
+# 가이드 박스 비율 (화면 너비 대비)
+guide_w_pct = current_guide_ratio * 100        # 너비 %
+# 박스 높이 = (너비 / 카드종횡비) — 영상 높이 대비 %로 변환
+# video는 4:3 또는 16:9. JS에서 실제 video 크기 기준으로 동적 계산.
+
+# 컴포넌트 높이 (모바일 고려)
+COMP_HEIGHT = 620
+
+html_code = f"""
+<div style="font-family: sans-serif; max-width: 100%;">
+  <div id="camWrap" style="position: relative; width: 100%; max-width: 720px;
+       margin: 0 auto; background:#000; border-radius: 12px; overflow: hidden;">
+    <video id="video" autoplay playsinline muted
+           style="width: 100%; height: auto; display: block;"></video>
+
+    <!-- 가이드 오버레이 (절대 위치) -->
+    <div id="guideBox" style="
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: {guide_w_pct}%;
+        aspect-ratio: {CARD_ASPECT};
+        border: 3px dashed #66ff66;
+        box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+        box-sizing: border-box;
+        pointer-events: none;">
+      <!-- 코너 마커 -->
+      <div style="position:absolute;top:-4px;left:-4px;width:28px;height:28px;
+                  border-top:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
+      <div style="position:absolute;top:-4px;right:-4px;width:28px;height:28px;
+                  border-top:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
+      <div style="position:absolute;bottom:-4px;left:-4px;width:28px;height:28px;
+                  border-bottom:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
+      <div style="position:absolute;bottom:-4px;right:-4px;width:28px;height:28px;
+                  border-bottom:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
+      <!-- 중앙 크로스헤어 -->
+      <div style="position:absolute;top:50%;left:50%;width:30px;height:3px;
+                  background:#ffcc00;transform:translate(-50%,-50%);"></div>
+      <div style="position:absolute;top:50%;left:50%;width:3px;height:30px;
+                  background:#ffcc00;transform:translate(-50%,-50%);"></div>
+    </div>
+
+    <!-- 상단 안내 -->
+    <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);
+                background:rgba(0,0,0,0.65);color:#66ff66;padding:6px 14px;
+                border-radius:20px;font-size:13px;font-weight:bold;">
+      📏 {selected_distance}m | 카드를 박스에 맞추기 ({guide_w_pct:.1f}%)
+    </div>
+
+    <!-- 하단 안내 -->
+    <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+                background:rgba(0,0,0,0.65);color:#fff;padding:6px 14px;
+                border-radius:20px;font-size:12px;">
+      ① 카드 맞추기 → ② 위치 고정 → ③ 카드 제거 → ④ 촬영
+    </div>
+  </div>
+
+  <!-- 컨트롤 -->
+  <div style="text-align:center; margin-top: 14px;">
+    <button id="captureBtn" style="
+        background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+        color: white; border: none;
+        padding: 14px 36px; font-size: 17px; font-weight: bold;
+        border-radius: 30px; cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+      📸 촬영하기
+    </button>
+    <button id="switchBtn" style="
+        background:#444; color:white; border:none;
+        padding:14px 20px; font-size:15px; font-weight:bold;
+        border-radius:30px; cursor:pointer; margin-left:8px;">
+      🔄 전/후면
+    </button>
+  </div>
+
+  <div id="status" style="text-align:center; margin-top:10px; color:#666; font-size:13px;">
+    카메라 시작 중...
+  </div>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+</div>
+
+<script>
+(function() {{
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const captureBtn = document.getElementById('captureBtn');
+  const switchBtn = document.getElementById('switchBtn');
+  const status = document.getElementById('status');
+  let currentStream = null;
+  let useFront = false;
+
+  async function startCamera() {{
+    if (currentStream) {{
+      currentStream.getTracks().forEach(t => t.stop());
+    }}
+    try {{
+      const constraints = {{
+        video: {{
+          facingMode: useFront ? 'user' : {{ ideal: 'environment' }},
+          width:  {{ ideal: 1280 }},
+          height: {{ ideal: 960  }}
+        }},
+        audio: false
+      }};
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = currentStream;
+      status.textContent = '✅ 카메라 활성. 카드를 박스에 맞추세요.';
+      status.style.color = '#0a7';
+    }} catch (err) {{
+      status.textContent = '❌ 카메라 접근 실패: ' + err.message;
+      status.style.color = '#c00';
+    }}
+  }}
+
+  switchBtn.addEventListener('click', () => {{
+    useFront = !useFront;
+    startCamera();
+  }});
+
+  captureBtn.addEventListener('click', () => {{
+    if (!video.videoWidth) {{
+      status.textContent = '⚠️ 카메라가 아직 준비되지 않음';
+      return;
+    }}
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+    // Streamlit으로 전송
+    const payload = {{ image: dataUrl, w: canvas.width, h: canvas.height }};
+    window.parent.postMessage(
+      {{ isStreamlitMessage: true, type: 'streamlit:setComponentValue',
+         value: payload }}, '*'
+    );
+    status.textContent = '📤 이미지 전송 완료! 아래에서 결과 확인';
+    status.style.color = '#0a7';
+    captureBtn.style.background = '#999';
+    captureBtn.textContent = '✅ 촬영 완료';
+    setTimeout(() => {{
+      captureBtn.style.background = 'linear-gradient(135deg, #ff6b6b, #ee5a52)';
+      captureBtn.textContent = '📸 다시 촬영';
+    }}, 1500);
+  }});
+
+  startCamera();
+}})();
+</script>
+"""
+
+# bidirectional component via st.components.v1.html은 값 반환 불가
+# → 대신 st.camera_input을 백업으로 함께 제공 (값 반환 가능)
+components.html(html_code, height=COMP_HEIGHT)
+
+st.markdown("---")
+st.info("""
+ℹ️ **위 라이브 카메라**는 거리 가이드 확인용입니다.
+실제 분석에 사용할 이미지는 **아래의 카메라 입력**으로 촬영해 주세요.
+(가이드를 본 그 자세 그대로 아래 버튼을 눌러 촬영)
 """)
 
 # ════════════════════════════════════════════════════════════════
-# 입력 (카메라 OR 파일)
+# 실제 분석용 캡처 (Streamlit 표준 입력)
 # ════════════════════════════════════════════════════════════════
-st.markdown("### 📷 2단계: 촬영 또는 업로드")
-tab1, tab2 = st.tabs(["📸 카메라 촬영", "📁 파일 업로드"])
+st.markdown("### 📸 2단계: 분석용 사진 촬영 / 업로드")
+tab1, tab2 = st.tabs(["📷 카메라", "📁 파일 업로드"])
 
+input_img_np = None
 with tab1:
-    cam_img = st.camera_input("카드 치운 후 촬영하세요")
+    cam_img = st.camera_input("위 가이드대로 거리 맞춘 후 촬영 (카드 제거 상태)")
     if cam_img is not None:
-        pil_img = Image.open(cam_img).convert("RGB")
-        st.session_state.captured_img = np.array(pil_img)
+        input_img_np = np.array(Image.open(cam_img).convert("RGB"))
 
 with tab2:
-    upload = st.file_uploader("균열 사진 (카드 없이)", type=["jpg", "jpeg", "png"])
+    upload = st.file_uploader("균열 사진", type=["jpg", "jpeg", "png"])
     if upload is not None:
-        pil_img = Image.open(upload).convert("RGB")
-        st.session_state.captured_img = np.array(pil_img)
+        input_img_np = np.array(Image.open(upload).convert("RGB"))
+
+if input_img_np is None:
+    st.warning("👆 위 카메라 또는 파일 업로드로 사진을 입력해주세요.")
+    st.stop()
 
 # ════════════════════════════════════════════════════════════════
 # 분석
 # ════════════════════════════════════════════════════════════════
-if st.session_state.captured_img is None:
-    st.info("👆 거리를 맞춘 후 카메라 촬영 또는 파일 업로드를 진행하세요")
-    st.stop()
-
-img_np = st.session_state.captured_img
-H, W = img_np.shape[:2]
+H, W = input_img_np.shape[:2]
+box_w_px = W * current_guide_ratio
+scale = CARD_W_MM / box_w_px   # mm per pixel
 
 st.markdown("---")
 st.markdown("### 🎯 3단계: 분석 결과")
 
-if st.button("🔁 다시 촬영"):
-    st.session_state.captured_img = None
-    st.rerun()
-
-box_w_px = W * current_guide_ratio
-scale = CARD_W_MM / box_w_px
-
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("**📷 입력 이미지**")
-    st.image(img_np, use_container_width=True)
+    st.image(input_img_np, use_container_width=True)
 with col2:
     st.markdown("**📐 측정 기준**")
     st.write(f"📏 촬영 거리: **{selected_distance} m**")
     st.write(f"🔬 1 픽셀 = **{scale:.4f} mm**")
-    st.write(f"🖼️ 이미지: **{W} × {H} px**")
-    st.write(f"📦 가이드 비율: **{current_guide_ratio*100:.1f}%**")
+    st.write(f"🖼️ 이미지 크기: **{W} × {H} px**")
+    st.write(f"📦 카드 가이드 비율: **{current_guide_ratio*100:.1f}%**")
 
 with st.spinner("🔍 균열 탐지 중..."):
     yolo = load_yolo()
-    results = yolo.predict(img_np, conf=conf_thres, verbose=False)
+    results = yolo.predict(input_img_np, conf=conf_thres, verbose=False)
 
 if not results or results[0].masks is None:
-    st.error("❌ 균열을 찾지 못했습니다. 신뢰도를 낮춰보세요.")
+    st.error("❌ 균열을 찾지 못했습니다. 신뢰도 임계값을 낮춰보세요.")
     st.stop()
 
 masks = results[0].masks.data.cpu().numpy()
@@ -197,28 +297,23 @@ area_cm2 = (pixel_cnt * scale * scale) / 100.0
 dt = cv2.distanceTransform(full_mask, cv2.DIST_L2, 5)
 max_width_mm = 2 * float(dt.max()) * scale
 
-c1, c2, c3 = st.columns(3)
+# 길이 추정 (skeleton 근사: 면적/평균폭)
+mean_width_mm = (np.sum(dt[full_mask > 0]) * 2 * scale) / max(pixel_cnt, 1)
+length_mm = (pixel_cnt * scale * scale) / max(mean_width_mm, 1e-6)
+
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("📏 mm/pixel", f"{scale:.4f}")
-c2.metric("📐 균열 면적", f"{area_cm2:.2f} cm²")
-c3.metric("📏 최대 균열 폭", f"{max_width_mm:.2f} mm")
+c2.metric("📐 면적", f"{area_cm2:.2f} cm²")
+c3.metric("📏 최대 폭", f"{max_width_mm:.2f} mm")
+c4.metric("📐 추정 길이", f"{length_mm:.1f} mm")
 
-# KCS 등급
-if max_width_mm < 0.2:
-    grade, emoji = "A (양호)", "✅"
-elif max_width_mm < 0.3:
-    grade, emoji = "B (관찰 필요)", "🟡"
-elif max_width_mm < 1.0:
-    grade, emoji = "C (보수 필요)", "🟠"
-else:
-    grade, emoji = "D (긴급 보수)", "🔴"
-st.markdown(f"### {emoji} KCS 안전등급: **{grade}**")
-
-overlay = img_np.copy()
+# 시각화 (등급 표시 없음)
+overlay = input_img_np.copy()
 overlay[full_mask > 0] = [255, 50, 50]
-blended = cv2.addWeighted(img_np, 0.6, overlay, 0.4, 0)
-st.image(blended, caption="🎯 검출 결과 (빨강: 균열)", use_container_width=True)
+blended = cv2.addWeighted(input_img_np, 0.6, overlay, 0.4, 0)
+st.image(blended, caption="🎯 검출 결과 (빨강: 균열 영역)", use_container_width=True)
 
 st.success(
-    f"✅ 측정 완료 — 거리 {selected_distance}m 기반\n"
-    f"📊 균열 픽셀: {pixel_cnt:,}개 | 1px = {scale:.4f}mm"
+    f"✅ 측정 완료 — 거리 **{selected_distance}m** 기반\n"
+    f"📊 균열 픽셀: **{pixel_cnt:,}개** | 1px = **{scale:.4f}mm**"
 )
