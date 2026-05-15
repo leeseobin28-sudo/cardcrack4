@@ -1,8 +1,4 @@
-streamlit==1.41.1
-streamlit-webrtc==0.47.9
-tornado>=6.3
-av==11.0.0
-aiortc>=1.6.0
+streamlit
 opencv-python-headless
 numpy<2
 ultralytics
