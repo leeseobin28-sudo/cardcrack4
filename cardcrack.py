@@ -13,6 +13,10 @@ from PIL import Image
 from ultralytics import YOLO
 import av
 
+# 이 부분이 수정되어야 합니다!
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration 
+
+# ... 나머지 코드
 # ... (이하 작성자님의 원래 코드) ...
 
 st.set_page_config(page_title="균열 자동 진단 V9", layout="wide")
