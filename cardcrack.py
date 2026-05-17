@@ -3,7 +3,7 @@
 # - 등급 산출 제거
 # - 라이브 카메라 위에 가이드 박스 오버레이 (HTML/JS 커스텀)
 # - 가이드 비율과 실제 캡처 비율 일치
-# - 강제 후면 카메라 및 Streamlit UI 사이즈 일치 적용
+# - 후면 카메라 우선 및 1번, 2번 화면 크기 일치 업데이트
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -70,50 +70,68 @@ if "captured_b64" not in st.session_state:
 # ════════════════════════════════════════════════════════════════
 st.markdown("### 🎥 1단계: 라이브 카메라 + 거리 가이드")
 
-guide_w_pct = current_guide_ratio * 100
-COMP_HEIGHT = 650
+# 가이드 박스 비율 (화면 너비 대비)
+guide_w_pct = current_guide_ratio * 100        # 너비 %
+
+# 컴포넌트 높이 (화면 꽉 차게 나올 때 스크롤바 안 생기도록 넉넉하게 설정)
+COMP_HEIGHT = 750
 
 html_code = f"""
-<div style="font-family: sans-serif; width: 100%; box-sizing: border-box;">
-  <div style="background-color: #262730; padding: 1rem; border-radius: 0.5rem; max-width: 700px; margin: 0 auto;">
-    
-    <div id="camWrap" style="position: relative; width: 100%; border-radius: 0.25rem; overflow: hidden; background:#000;">
-      <video id="video" autoplay playsinline muted style="width: 100%; height: auto; display: block;"></video>
+<div style="font-family: sans-serif; width: 100%;">
+  <div id="camWrap" style="position: relative; width: 100%;
+       margin: 0 auto; background:#000; border-radius: 12px; overflow: hidden;">
+    <video id="video" autoplay playsinline muted
+           style="width: 100%; height: auto; display: block;"></video>
 
-      <div id="guideBox" style="
-          position: absolute;
-          top: 50%; left: 50%;
-          transform: translate(-50%, -50%);
-          width: {guide_w_pct}%;
-          aspect-ratio: {CARD_ASPECT};
-          border: 3px dashed #66ff66;
-          box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
-          box-sizing: border-box;
-          pointer-events: none;">
-        <div style="position:absolute;top:-4px;left:-4px;width:28px;height:28px;border-top:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
-        <div style="position:absolute;top:-4px;right:-4px;width:28px;height:28px;border-top:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
-        <div style="position:absolute;bottom:-4px;left:-4px;width:28px;height:28px;border-bottom:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
-        <div style="position:absolute;bottom:-4px;right:-4px;width:28px;height:28px;border-bottom:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
-        <div style="position:absolute;top:50%;left:50%;width:30px;height:3px;background:#ffcc00;transform:translate(-50%,-50%);"></div>
-        <div style="position:absolute;top:50%;left:50%;width:3px;height:30px;background:#ffcc00;transform:translate(-50%,-50%);"></div>
-      </div>
-
-      <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:#66ff66;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:bold;white-space:nowrap;">
-        📏 {selected_distance}m | 카드를 박스에 맞추기 ({guide_w_pct:.1f}%)
-      </div>
-      <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;white-space:nowrap;">
-        ① 위치 고정 → ② 카드 제거 → ③ 아래에서 촬영
-      </div>
+    <div id="guideBox" style="
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: {guide_w_pct}%;
+        aspect-ratio: {CARD_ASPECT};
+        border: 3px dashed #66ff66;
+        box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+        box-sizing: border-box;
+        pointer-events: none;">
+      <div style="position:absolute;top:-4px;left:-4px;width:28px;height:28px;
+                  border-top:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
+      <div style="position:absolute;top:-4px;right:-4px;width:28px;height:28px;
+                  border-top:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
+      <div style="position:absolute;bottom:-4px;left:-4px;width:28px;height:28px;
+                  border-bottom:6px solid #66ff66;border-left:6px solid #66ff66;"></div>
+      <div style="position:absolute;bottom:-4px;right:-4px;width:28px;height:28px;
+                  border-bottom:6px solid #66ff66;border-right:6px solid #66ff66;"></div>
+      <div style="position:absolute;top:50%;left:50%;width:30px;height:3px;
+                  background:#ffcc00;transform:translate(-50%,-50%);"></div>
+      <div style="position:absolute;top:50%;left:50%;width:3px;height:30px;
+                  background:#ffcc00;transform:translate(-50%,-50%);"></div>
     </div>
-    
+
+    <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);
+                background:rgba(0,0,0,0.65);color:#66ff66;padding:6px 14px;
+                border-radius:20px;font-size:13px;font-weight:bold; white-space:nowrap;">
+      📏 {selected_distance}m | 카드를 박스에 맞추기 ({guide_w_pct:.1f}%)
+    </div>
+
+    <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+                background:rgba(0,0,0,0.65);color:#fff;padding:6px 14px;
+                border-radius:20px;font-size:12px; white-space:nowrap;">
+      ① 위치 고정 → ② 카드 제거 → ③ 아래에서 촬영
+    </div>
   </div>
 
   <div style="text-align:center; margin-top: 14px;">
-    <button id="switchBtn" style="background:#444; color:white; border:none; padding:12px 24px; font-size:15px; font-weight:bold; border-radius:30px; cursor:pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+    <button id="switchBtn" style="
+        background:#444; color:white; border:none;
+        padding:12px 24px; font-size:15px; font-weight:bold;
+        border-radius:30px; cursor:pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
       🔄 카메라 전/후면 전환
     </button>
   </div>
-  <div id="status" style="text-align:center; margin-top:10px; color:#666; font-size:13px;">카메라 시작 중...</div>
+
+  <div id="status" style="text-align:center; margin-top:10px; color:#666; font-size:13px;">
+    카메라 시작 중...
+  </div>
 </div>
 
 <script>
@@ -128,45 +146,23 @@ html_code = f"""
     if (currentStream) {{
       currentStream.getTracks().forEach(t => t.stop());
     }}
-    
-    // 1단계: exact 옵션으로 후면 카메라를 강제로 요청
-    let constraints = {{
-      video: {{
-        facingMode: useFront ? "user" : {{ exact: "environment" }},
-        width: {{ ideal: 1920 }},
-        height: {{ ideal: 1080 }}
-      }},
-      audio: false
-    }};
-
     try {{
+      const constraints = {{
+        video: {{
+          // ideal을 빼고 명시적으로 후면 카메라를 우선 요청
+          facingMode: useFront ? 'user' : 'environment',
+          width:  {{ ideal: 1920 }},
+          height: {{ ideal: 1080 }}
+        }},
+        audio: false
+      }};
       currentStream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = currentStream;
-      status.textContent = '✅ 카메라 활성 (후면 강제). 카드를 박스에 맞추세요.';
+      status.textContent = '✅ 카메라 활성. 카드를 박스에 맞추세요.';
       status.style.color = '#0a7';
     }} catch (err) {{
-      // 2단계: exact 옵션이 거부될 경우 (PC이거나 지원하지 않는 기기) 일반 요청으로 우회
-      console.warn("Exact environment facing mode failed, falling back...", err);
-      constraints.video.facingMode = useFront ? "user" : "environment";
-      
-      try {{
-        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = currentStream;
-        status.textContent = '✅ 카메라 활성 (일반). 카드를 박스에 맞추세요.';
-        status.style.color = '#0a7';
-      }} catch (err2) {{
-        // 3단계: 최후의 수단으로 아무 카메라나 열기
-        delete constraints.video.facingMode;
-        try {{
-           currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-           video.srcObject = currentStream;
-           status.textContent = '⚠️ 전면/기본 카메라 활성. 전환 버튼을 눌러보세요.';
-           status.style.color = '#d90';
-        }} catch(err3) {{
-           status.textContent = '❌ 카메라 접근 실패: ' + err3.message;
-           status.style.color = '#c00';
-        }}
-      }}
+      status.textContent = '❌ 카메라 접근 실패: ' + err.message;
+      status.style.color = '#c00';
     }}
   }}
 
@@ -180,6 +176,7 @@ html_code = f"""
 </script>
 """
 
+# HTML 컴포넌트 렌더링
 components.html(html_code, height=COMP_HEIGHT)
 
 st.markdown("---")
